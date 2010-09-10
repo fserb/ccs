@@ -1,15 +1,17 @@
 -- CCS
 
+import Control.Monad
 import Data.Bits
 import Data.Binary.Get
 import Data.Word
 import Text.Printf
 import System.IO
+import System.EasyFile
 import qualified Data.ByteString.Lazy as BL
 
-data Addr = Addr Int deriving (Show, Eq)
+newtype Addr = Addr Int deriving (Show, Eq)
 type Filename = String
-type FileOffset = (Int, Int, Int)
+type FileOffset = (Int, Int, Int) -- file, offset start, size
 
 cachePath = "/home/fserb/.cache/google-chrome/Cache"
 indexFile = cachePath ++ "/index"
@@ -17,26 +19,46 @@ indexFile = cachePath ++ "/index"
 -- Based on chrome/trunk/src/net/disk_cache/addr.h
 getAddr :: Addr -> Either Filename FileOffset
 getAddr (Addr a)
-  | (a .&. 0x70000000) == 0 = Left $ printf "%06x" (a .&. 0x0FFFFFFF)
-  | otherwise               = Right $ ( (a .&. 0x00ff0000) `shiftR` 16, 
-                                        (a .&. 0x0000ffff),
-                                        ((a .&. 0x03000000) `shiftR` 24) + 1)
+  | (a .&. 0x70000000) == 0 = Left $ printf "f_%06x" (a .&. 0x0FFFFFFF)
+  | otherwise               = let file_number = (a .&. 0x00ff0000) `shiftR` 16
+                                  start_block = (a .&. 0x0000ffff)
+                                  num_block   = ((a .&. 0x03000000) `shiftR` 24) + 1
+                                  file_type   = (a .&. 0x70000000) `shiftR` 28
+                                  block_size  = [0, 36, 256, 1024, 4096] !! file_type
+                                  offset_start = 8192 + block_size*start_block
+                                  size = num_block*block_size
+                              in Right (file_number, offset_start, size)
 
 
-getIndexTable :: String -> IO [Addr]
-getIndexTable s = do
+loadAddr :: Addr -> IO BL.ByteString
+loadAddr a = let addr = getAddr a 
+             in case addr of
+                  Left filename -> openBinaryFile (joinPath [cachePath, filename]) ReadMode 
+                                   >>= BL.hGetContents
+                  Right (filenumber, start, size) -> 
+                    let filename = joinPath [ cachePath, printf "data_%01d" filenumber ]
+                    in do
+                      h <- openBinaryFile filename ReadMode 
+                      hSeek h AbsoluteSeek $ toInteger start
+                      BL.hGet h size
+
+
+getIndexTable :: BL.ByteString -> [Addr]
+getIndexTable = runGet $ do
+                  magic <- getWord32le
+                  when (magic /= 0xC103CAC3) (fail "No magic")
+                  skip (4*6)
+                  table_len <- getWord32le
+                  -- skip 3 words from header, 52 pads and 28 from LRU
+                  skip (4*3 + 4*52 + 4*28)
+                  -- load the address table here
+                  all <- replicateM (fromIntegral table_len)
+                                    (getWord32le >>= return . Addr . fromIntegral)
+                  return $ filter (/= Addr 0) all
+
+  
+loadIndexTable :: String -> IO [Addr]
+loadIndexTable s = do
   h <- openBinaryFile s ReadMode
   bl <- BL.hGetContents h
-  return $ runGet 
-           (do
-              magic <- getWord32le
-              -- magic must be 0xC103CAC3 and so what?
-              skip (4*6)
-              table_len <- getWord32le
-              -- skip 3 words from header, 52 pads and 28 from LRU
-              skip (4*3 + 4*52 + 4*28)
-              -- load the address table here
-              return [Addr $ fromIntegral table_len])
-            bl
-  
-  
+  return $ getIndexTable bl
