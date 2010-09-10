@@ -27,17 +27,16 @@ getIndexTable :: String -> IO [Addr]
 getIndexTable s = do
   h <- openBinaryFile s ReadMode
   bl <- BL.hGetContents h
-  ret <- return $ runGet 
-         (do
-           magic <- getWord32le
-           -- magic must be 0xC103CAC3 and so what?
-           skip (4*6)
-           table_len <- getWord32le
-           -- skip 3 words from header, 52 pads and 28 from LRU
-           skip (4*3 + 4*52 + 4*28)
-           
-           return [Addr $ fromIntegral table_len])
-          bl
-  return ret
+  return $ runGet 
+           (do
+              magic <- getWord32le
+              -- magic must be 0xC103CAC3 and so what?
+              skip (4*6)
+              table_len <- getWord32le
+              -- skip 3 words from header, 52 pads and 28 from LRU
+              skip (4*3 + 4*52 + 4*28)
+              -- load the address table here
+              return [Addr $ fromIntegral table_len])
+            bl
   
   
