@@ -38,7 +38,6 @@ getIndexTable s = do
            
            return [Addr $ fromIntegral table_len])
           bl
-  hClose h
   return ret
   
   
