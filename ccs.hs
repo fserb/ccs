@@ -8,13 +8,14 @@ import Text.Printf
 import System.IO
 import System.EasyFile
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Char8 as Char8
+
+cachePath = "/home/fserb/.cache/google-chrome/Cache"
+indexFile = cachePath ++ "/index"
 
 newtype Addr = Addr Int deriving (Show, Eq)
 type Filename = String
 type FileOffset = (Int, Int, Int) -- file, offset start, size
-
-cachePath = "/home/fserb/.cache/google-chrome/Cache"
-indexFile = cachePath ++ "/index"
 
 -- Based on chrome/trunk/src/net/disk_cache/addr.h
 getAddr :: Addr -> Either Filename FileOffset
@@ -30,6 +31,45 @@ getAddr (Addr a)
                               in Right (file_number, offset_start, size)
 
 
+getIndexTable :: BL.ByteString -> [Addr]
+getIndexTable = runGet $ do
+                  magic <- getWord32le
+                  when (magic /= 0xC103CAC3) (fail "No magic")
+                  skip (4*6)
+                  table_len <- getWord32le
+                  -- skip 3 words from header, 52 pads and 28 from LRU
+                  skip (4*3 + 4*52 + 4*28)
+                  -- load the address table here
+                  all <- replicateM (fromIntegral table_len)
+                                    ((Addr . fromIntegral) `fmap` getWord32le)
+                  return $ filter (/= Addr 0) all
+
+
+newtype Block = Block BL.ByteString
+
+getURL :: Block -> Either String Addr
+getURL (Block b) = flip runGet b $ do
+                     skip (4*8)
+                     key_len <- getWord32le
+                     cache_key <- ((Addr . fromIntegral) `fmap` getWord32le)
+                     if (cache_key /= Addr 0)
+                       then return $ Right cache_key
+                       else skip (4*14) 
+                              >> ((Left . Char8.unpack) `fmap` getBytes (fromIntegral key_len))
+
+
+getDataAddr :: Block -> [Addr]
+getDataAddr (Block b) = flip runGet b $ do
+                          skip(4*10)
+                          size <- replicateM 4 (fromIntegral `fmap` getWord32le)
+                          addr <- replicateM 4 ((Addr . fromIntegral) `fmap` getWord32le)
+                          return $ map fst $ filter ((/= 0) . snd) $ zip addr size
+
+
+
+
+-- Inpure functions from hell
+
 loadAddr :: Addr -> IO BL.ByteString
 loadAddr a = let addr = getAddr a 
              in case addr of
@@ -43,22 +83,12 @@ loadAddr a = let addr = getAddr a
                       BL.hGet h size
 
 
-getIndexTable :: BL.ByteString -> [Addr]
-getIndexTable = runGet $ do
-                  magic <- getWord32le
-                  when (magic /= 0xC103CAC3) (fail "No magic")
-                  skip (4*6)
-                  table_len <- getWord32le
-                  -- skip 3 words from header, 52 pads and 28 from LRU
-                  skip (4*3 + 4*52 + 4*28)
-                  -- load the address table here
-                  all <- replicateM (fromIntegral table_len)
-                                    (getWord32le >>= return . Addr . fromIntegral)
-                  return $ filter (/= Addr 0) all
-
-  
 loadIndexTable :: String -> IO [Addr]
 loadIndexTable s = do
   h <- openBinaryFile s ReadMode
   bl <- BL.hGetContents h
   return $ getIndexTable bl
+
+
+
+
