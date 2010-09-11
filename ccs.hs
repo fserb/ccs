@@ -1,21 +1,21 @@
 -- CCS
+module Main where
 
 import Control.Monad
+import Data.Binary.Get
 import Data.Bits
 import Data.List
+import Data.Maybe
 import Data.String.Utils
-import Data.Binary.Get
 import Data.Word
-import Maybe
 import Magic
-import Text.Printf
+import System.FilePath
 import System.IO
-import System.EasyFile
+import Text.Printf
 import Text.Regex.Base
-import Text.Regex.Posix
+import Text.Regex.PCRE
 import Text.Regex.PCRE.ByteString.Lazy
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Lazy.UTF8 as BLU
 import qualified Data.ByteString.Lazy.Char8 as BL8
 
 cachePath = "/home/fserb/.cache/google-chrome/Cache"
@@ -58,6 +58,7 @@ getIndexTable =
 
 
 newtype Block = Block BL.ByteString
+newtype Data  = Data BL.ByteString
 
 getURL :: Block -> Either String Addr
 getURL (Block b) = 
@@ -65,7 +66,7 @@ getURL (Block b) =
     skip (4*8)
     key_len <- getWord32le
     cache_key <- ((Addr . fromIntegral) `fmap` getWord32le)
-    if (cache_key /= Addr 0)
+    if cache_key /= Addr 0
       then return $ Right cache_key
       else skip (4*14) 
              >> ((Left . BL8.unpack) `fmap` 
@@ -81,21 +82,36 @@ getDataAddr (Block b) =
                           getWord32le)
     return $ map fst $ filter ((/= 0) . snd) $ zip addr size
 
+getHeaderContentAddr :: Block -> Maybe (Addr, Addr)
+getHeaderContentAddr b =
+  case getDataAddr b of
+    [] -> Nothing
+    [_] -> Nothing
+    [header, content] -> Just (header, content)
+    d -> fail $ "Weird number of data: " ++ show d
 
-getContentTypeFromHeader :: BL.ByteString -> Maybe String
-getContentTypeFromHeader bl = 
+
+getContentTypeFromHeader :: Data -> Maybe String
+getContentTypeFromHeader (Data bl) = 
   let s = replace "\NUL" "\n" $ BL8.unpack bl
       ct = s =~ "^Content-Type: ([^; ]*)" :: [[String]]
   in case ct of 
        [_,s]:xs -> Just s
        [] -> Nothing
-
+       
+       
 
 -- Impure functions from hell
        
+       
+-- constructFilename :: Addr -> String -> IO String
+-- constructFilename a t =
+--   case getHeaderContentAddr b of
+--     Nothing -> fail "Make temp based on url"
+--     Just (header_a, content_a) ->
 
-getContentTypeFromContent :: BL.ByteString -> IO (Maybe String)
-getContentTypeFromContent bl = 
+getContentTypeFromContent :: Data -> IO (Maybe String)
+getContentTypeFromContent (Data bl) = 
   do
     m <- magicOpen [MagicMime]
     magicLoadDefault m
@@ -107,27 +123,26 @@ getContentTypeFromContent bl =
 
 getContentType:: Block -> IO (Maybe String)
 getContentType b = 
-  case getDataAddr b of
-    [] -> return Nothing
-    [_] -> return Nothing
-    [header_a, content_a] -> 
-      do header <- loadAddr header_a
+  case getHeaderContentAddr b of 
+    Just (header_a, content_a) -> 
+      do header <- Data `fmap` loadAddr header_a
          case getContentTypeFromHeader header of
-           Nothing -> loadAddr content_a >>= getContentTypeFromContent
-           Just "application/octet-stream" -> loadAddr content_a 
-                                              >>= getContentTypeFromContent
+           Nothing -> f
+           Just "application/octet-stream" -> f
            c -> return c
-    d -> fail $ "Weird number of data: " ++ show d
+           where f = Data `fmap`  -- TODO: Rename me!
+                     loadAddr content_a >>= getContentTypeFromContent
+    Nothing -> return Nothing
 
 
 loadAddr :: Addr -> IO BL.ByteString
 loadAddr a = 
   case getAddr a of
     Left filename -> openBinaryFile 
-                     (joinPath [cachePath, filename]) ReadMode
+                     (cachePath </> filename) ReadMode
                     >>= BL.hGetContents
     Right (filenumber, start, size) -> 
-      let filename = joinPath [ cachePath, printf "data_%01d" filenumber ]
+      let filename = cachePath </> printf "data_%01d" filenumber
       in do
         h <- openBinaryFile filename ReadMode 
         hSeek h AbsoluteSeek $ toInteger start
@@ -140,14 +155,12 @@ loadIndexTable s = do
   bl <- BL.hGetContents h
   return $ getIndexTable bl
 
-
 main = do
   cache <- loadIndexTable indexFile
-  -- there must be a better of doing this mapM
-  ctype <- mapM (\a -> (getContentType <=< (return . Block) <=< loadAddr) a 
-                 >>= \x -> return (a, x)) cache
-  let interesting = filter (\ (a, t) -> case t of 
-                                          Just t -> t =~ interestingTypes
-                                          Nothing -> False) ctype
-  
+  -- there must be a better way of doing this mapM
+  ctype <- mapM (teeM $ getContentType . Block <=< loadAddr) cache
+  let interesting = filter (maybe False (=~ interestingTypes) . snd) ctype
+      
+      
   return interesting
+    where teeM f a = f a >>= \x -> return (a, x)
