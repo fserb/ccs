@@ -5,6 +5,7 @@ import Data.Bits
 import Data.String.Utils
 import Data.Binary.Get
 import Data.Word
+import Maybe
 import Text.Printf
 import System.IO
 import System.EasyFile
@@ -74,14 +75,31 @@ getDataAddr (Block b) = flip runGet b $ do
 
 getContentTypeFromHeader :: BL.ByteString -> Maybe String
 getContentTypeFromHeader bl = let s = replace "\NUL" "\n" $ BLU.toString bl
-                                  ct = s =~ "Content-Type: (.*)" :: [[String]]
+                                  ct = s =~ "^Content-Type: (.*)$" :: [[String]]
                               in case ct of 
                                    [[_,s]] -> Just s
                                    [] -> Nothing
 
 
+getContentTypeFromContent :: BL.ByteString -> Maybe String
+getContentTypeFromContent bl = Nothing
 
--- Inpure functions from hell
+
+-- Impure functions from hell
+
+
+getContentType:: Block -> IO (Maybe String)
+getContentType b = let d = getDataAddr b 
+                   in case d of
+                        [header_a, content_a] -> do
+                               header <- loadAddr header_a
+                               let ct = getContentTypeFromHeader header
+                                 in case ct of
+                                      Just c -> return $ Just c
+                                      Nothing -> loadAddr content_a
+                                                 >>= return . getContentTypeFromContent 
+                        _ -> fail $ "Weird number of data: " ++ show d
+                                       
 
 loadAddr :: Addr -> IO BL.ByteString
 loadAddr a = let addr = getAddr a 
@@ -103,5 +121,7 @@ loadIndexTable s = do
   return $ getIndexTable bl
 
 
-
+main = do
+  cache <- loadIndexTable indexFile
+  return ""
 
