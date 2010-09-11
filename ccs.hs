@@ -89,17 +89,14 @@ getContentTypeFromContent bl = Nothing
 
 
 getContentType:: Block -> IO (Maybe String)
-getContentType b = let d = getDataAddr b 
-                   in case d of
-                        [header_a, content_a] -> do
-                               header <- loadAddr header_a
-                               let ct = getContentTypeFromHeader header
-                                 in case ct of
-                                      Just c -> return $ Just c
-                                      Nothing -> loadAddr content_a
-                                                 >>= return . getContentTypeFromContent 
-                        _ -> fail $ "Weird number of data: " ++ show d
-                                       
+getContentType b = case getDataAddr b of
+                     [header_a, content_a] -> do
+                        header <- loadAddr header_a
+                        case getContentTypeFromHeader header of
+                          c -> return c
+                          Nothing -> fmap getContentTypeFromContent (loadAddr content_a)
+                     _ -> fail $ "Weird number of data: " ++ show d
+
 
 loadAddr :: Addr -> IO BL.ByteString
 loadAddr a = let addr = getAddr a 
