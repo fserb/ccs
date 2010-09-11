@@ -93,9 +93,9 @@ getContentType b = case getDataAddr b of
                      [header_a, content_a] -> do
                         header <- loadAddr header_a
                         case getContentTypeFromHeader header of
-                          c -> return c
                           Nothing -> fmap getContentTypeFromContent (loadAddr content_a)
-                     _ -> fail $ "Weird number of data: " ++ show d
+                          c -> return c
+                     d -> fail $ "Weird number of data: " ++ show d
 
 
 loadAddr :: Addr -> IO BL.ByteString
