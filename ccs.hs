@@ -2,13 +2,18 @@
 
 import Control.Monad
 import Data.Bits
+import Data.String.Utils
 import Data.Binary.Get
 import Data.Word
 import Text.Printf
 import System.IO
 import System.EasyFile
+import Text.Regex.Base
+import Text.Regex.Posix
+import Text.Regex.PCRE.ByteString.Lazy
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Char8 as Char8
+import qualified Data.ByteString.Lazy.UTF8 as BLU
+import qualified Data.ByteString.Lazy.Char8 as BL8
 
 cachePath = "/home/fserb/.cache/google-chrome/Cache"
 indexFile = cachePath ++ "/index"
@@ -55,7 +60,8 @@ getURL (Block b) = flip runGet b $ do
                      if (cache_key /= Addr 0)
                        then return $ Right cache_key
                        else skip (4*14) 
-                              >> ((Left . Char8.unpack) `fmap` getBytes (fromIntegral key_len))
+                              >> ((Left . BL8.unpack) `fmap` 
+                                  getLazyByteString (fromIntegral key_len))
 
 
 getDataAddr :: Block -> [Addr]
@@ -65,6 +71,13 @@ getDataAddr (Block b) = flip runGet b $ do
                           addr <- replicateM 4 ((Addr . fromIntegral) `fmap` getWord32le)
                           return $ map fst $ filter ((/= 0) . snd) $ zip addr size
 
+
+getContentTypeFromHeader :: BL.ByteString -> Maybe String
+getContentTypeFromHeader bl = let s = replace "\NUL" "\n" $ BLU.toString bl
+                                  ct = s =~ "Content-Type: (.*)" :: [[String]]
+                              in case ct of 
+                                   [[_,s]] -> Just s
+                                   [] -> Nothing
 
 
 
