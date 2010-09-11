@@ -21,6 +21,8 @@ import qualified Data.ByteString.Lazy.Char8 as BL8
 cachePath = "/home/fserb/.cache/google-chrome/Cache"
 indexFile = cachePath ++ "/index"
 
+interestingTypes = "(video|audio)"
+
 newtype Addr = Addr Int deriving (Show, Eq)
 type Filename = String
 type FileOffset = (Int, Int, Int) -- file, offset start, size
@@ -117,6 +119,7 @@ getContentType b =
            c -> return c
     d -> fail $ "Weird number of data: " ++ show d
 
+
 loadAddr :: Addr -> IO BL.ByteString
 loadAddr a = 
   case getAddr a of
@@ -140,5 +143,11 @@ loadIndexTable s = do
 
 main = do
   cache <- loadIndexTable indexFile
-  ctype <- mapM (loadAddr >=> (return . Block) >=> getContentType) cache
-  return ctype
+  -- there must be a better of doing this mapM
+  ctype <- mapM (\a -> (getContentType <=< (return . Block) <=< loadAddr) a 
+                 >>= \x -> return (a, x)) cache
+  let interesting = filter (\ (a, t) -> case t of 
+                                          Just t -> t =~ interestingTypes
+                                          Nothing -> False) ctype
+  
+  return interesting
