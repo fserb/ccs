@@ -2,7 +2,6 @@
 module Main where
 
 import Control.Monad
-import Control.Monad.Maybe
 import Data.Binary.Get
 import Data.Bits
 import Data.List
