@@ -29,6 +29,8 @@ Executable ccs
     regex-base == 0.93.*,
     url == 2.1.*
 
-  -- Other-modules:       
+  Other-modules: 
+    Cache
+
   -- Build-tools:         
   
