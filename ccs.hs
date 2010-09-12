@@ -2,6 +2,7 @@
 module Main where
 
 import Control.Monad
+import Control.Monad.Maybe
 import Data.Binary.Get
 import Data.Bits
 import Data.List
@@ -9,6 +10,7 @@ import Data.Maybe
 import Data.String.Utils
 import Data.Word
 import Magic
+import Network.URL
 import System.FilePath
 import System.IO
 import Text.Printf
@@ -31,7 +33,7 @@ type FileOffset = (Int, Int, Int) -- file, offset start, size
 getAddr :: Addr -> Either Filename FileOffset
 getAddr (Addr a)
   | (a .&. 0x70000000) == 0 = Left $ printf "f_%06x" (a .&. 0x0FFFFFFF)
-  | otherwise = 
+  | otherwise =
     let file_number = (a .&. 0x00ff0000) `shiftR` 16
         start_block = (a .&. 0x0000ffff)
         num_block   = ((a .&. 0x03000000) `shiftR` 24) + 1
@@ -43,7 +45,7 @@ getAddr (Addr a)
 
 
 getIndexTable :: BL.ByteString -> [Addr]
-getIndexTable = 
+getIndexTable =
   runGet $ do
     magic <- getWord32le
     when (magic /= 0xC103CAC3) (fail "No magic")
@@ -61,20 +63,20 @@ newtype Block = Block BL.ByteString
 newtype Data  = Data BL.ByteString
 
 getURL :: Block -> Either String Addr
-getURL (Block b) = 
+getURL (Block b) =
   flip runGet b $ do
     skip (4*8)
     key_len <- getWord32le
     cache_key <- ((Addr . fromIntegral) `fmap` getWord32le)
     if cache_key /= Addr 0
       then return $ Right cache_key
-      else skip (4*14) 
-             >> ((Left . BL8.unpack) `fmap` 
+      else skip (4*14)
+             >> ((Left . BL8.unpack) `fmap`
                  getLazyByteString (fromIntegral key_len))
 
 
 getDataAddr :: Block -> [Addr]
-getDataAddr (Block b) = 
+getDataAddr (Block b) =
   flip runGet b $ do
     skip(4*10)
     size <- replicateM 4 (fromIntegral `fmap` getWord32le)
@@ -92,26 +94,40 @@ getHeaderContentAddr b =
 
 
 getContentTypeFromHeader :: Data -> Maybe String
-getContentTypeFromHeader (Data bl) = 
+getContentTypeFromHeader (Data bl) =
   let s = replace "\NUL" "\n" $ BL8.unpack bl
-      ct = s =~ "^Content-Type: ([^; ]*)" :: [[String]]
-  in case ct of 
+      ct = s =~ "^Content-Type: ([^; \n]*)" :: [[String]]
+  in case ct of
        [_,s]:xs -> Just s
        [] -> Nothing
-       
-       
+
+
+getBaseDomain :: String -> String
+getBaseDomain s = 
+  case importURL s of
+    Nothing -> "unknown"
+    Just u -> let Absolute a = url_type u
+                  sp = split "." (host a)
+              in sp !! (length sp - 2)
+
+
+constructName :: Block -> String -> (String, String)
+constructName b t =
+  let ext = case t of
+              "audio/mpeg" -> "mp3"
+              "video/x-flv" -> "flv"
+              _ -> fail "Unknown mime: " ++ t
+      domain = case getURL b of
+                 Left s -> getBaseDomain s
+                 Right a -> "unknown"
+  in (domain, ext)
+  
 
 -- Impure functions from hell
-       
-       
--- constructFilename :: Addr -> String -> IO String
--- constructFilename a t =
---   case getHeaderContentAddr b of
---     Nothing -> fail "Make temp based on url"
---     Just (header_a, content_a) ->
+
 
 getContentTypeFromContent :: Data -> IO (Maybe String)
-getContentTypeFromContent (Data bl) = 
+getContentTypeFromContent (Data bl) =
   do
     m <- magicOpen [MagicMime]
     magicLoadDefault m
@@ -121,30 +137,30 @@ getContentTypeFromContent (Data bl) =
       s -> return $ Just $ split ";" s !! 0
 
 
-getContentType:: Block -> IO (Maybe String)
-getContentType b = 
-  case getHeaderContentAddr b of 
-    Just (header_a, content_a) -> 
+getContentType :: Block -> IO (Maybe String)
+getContentType b =
+  case getHeaderContentAddr b of
+    Just (header_a, content_a) ->
       do header <- Data `fmap` loadAddr header_a
          case getContentTypeFromHeader header of
-           Nothing -> f
-           Just "application/octet-stream" -> f
+           Nothing -> loadContentAndGetType
+           Just "application/octet-stream" -> loadContentAndGetType
            c -> return c
-           where f = Data `fmap`  -- TODO: Rename me!
-                     loadAddr content_a >>= getContentTypeFromContent
+         where loadContentAndGetType = Data `fmap`
+                 loadAddr content_a >>= getContentTypeFromContent
     Nothing -> return Nothing
 
 
 loadAddr :: Addr -> IO BL.ByteString
-loadAddr a = 
+loadAddr a =
   case getAddr a of
-    Left filename -> openBinaryFile 
+    Left filename -> openBinaryFile
                      (cachePath </> filename) ReadMode
                     >>= BL.hGetContents
-    Right (filenumber, start, size) -> 
+    Right (filenumber, start, size) ->
       let filename = cachePath </> printf "data_%01d" filenumber
       in do
-        h <- openBinaryFile filename ReadMode 
+        h <- openBinaryFile filename ReadMode
         hSeek h AbsoluteSeek $ toInteger start
         BL.hGet h size
 
@@ -157,10 +173,13 @@ loadIndexTable s = do
 
 main = do
   cache <- loadIndexTable indexFile
-  -- there must be a better way of doing this mapM
   ctype <- mapM (teeM $ getContentType . Block <=< loadAddr) cache
-  let interesting = filter (maybe False (=~ interestingTypes) . snd) ctype
-      
-      
-  return interesting
+  let interesting = map (\a -> case a of (a, Just b) -> (a, b))
+                        $ filter (maybe False (=~ interestingTypes) . snd) ctype
+
+  let extensions = mapM (\a -> case a of
+                                 (a, b) -> ((flip constructName b) . Block)
+                                           `fmap` loadAddr a) interesting
+
+  return extensions
     where teeM f a = f a >>= \x -> return (a, x)
