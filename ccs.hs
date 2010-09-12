@@ -18,6 +18,8 @@ import Text.Regex.PCRE
 import Text.Regex.PCRE.ByteString.Lazy
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as BL8
+import qualified Data.Map as Map
+import qualified Data.Digest.Pure.SHA (sha1)
 
 cachePath = "/home/fserb/.cache/google-chrome/Cache"
 indexFile = cachePath ++ "/index"
@@ -102,7 +104,7 @@ getContentTypeFromHeader (Data bl) =
 
 
 getBaseDomain :: String -> String
-getBaseDomain s = 
+getBaseDomain s =
   case importURL s of
     Nothing -> "unknown"
     Just u -> let Absolute a = url_type u
@@ -120,7 +122,7 @@ constructName b t =
                  Left s -> getBaseDomain s
                  Right a -> "unknown"
   in (domain, ext)
-  
+
 
 -- Impure functions from hell
 
@@ -179,6 +181,8 @@ main = do
   let extensions = mapM (\a -> case a of
                                  (a, b) -> ((flip constructName b) . Block)
                                            `fmap` loadAddr a) interesting
+
+
 
   return extensions
     where teeM f a = f a >>= \x -> return (a, x)

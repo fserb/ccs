@@ -1,7 +1,8 @@
 Name:                ccs
 Version:             0.1
--- Synopsis:            
--- Description:         
+Synopsis:            Chrome Cache Sniffer
+Description:         Sniff Google's Chrome cache directory and dumps
+		     all music/video files in a directory.
 License:             BSD3
 License-file:        LICENSE
 Author:              Fernando Serboncini
@@ -10,7 +11,7 @@ Stability:           Experimental
 Category:            Web
 Build-type:          Simple
 
-Cabal-version:       >=1.2
+Cabal-version:       >=1.6
 
 Executable ccs
   Main-is: ccs.hs
@@ -18,6 +19,8 @@ Executable ccs
   Build-depends:
     base == 4.*,  
     binary == 0.5.*,
+    containers == 0.3.*,
+    SHA == 1.4.*,
     bytestring == 0.9.*, 
     filepath == 1.1.*,
     magic == 1.0.*,
