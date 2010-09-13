@@ -1,10 +1,9 @@
 module Cache
   ( Addr(Addr),
-    Block(Block),
+    Block(..),
+    createBlock,
     loadIndexTable,
     indexFile,
-    getContentType,
-    getHeaderContentAddr,
     getURL,
     loadAddr,
   ) where
@@ -63,12 +62,30 @@ getIndexTable =
     return $ filter (/= Addr 0) all
 
 
-newtype Block = Block BL.ByteString
 newtype Data  = Data BL.ByteString
+data Block = Block { cache :: BL.ByteString, 
+                     contentType :: String,
+                     headerAddress :: Addr, 
+                     contentAddress :: Addr } deriving (Show)
+             
+createBlock :: Addr -> IO (Maybe Block)
+createBlock a =
+  do
+    c <- loadAddr a
+    t <- getContentType c
+    case t of
+      Nothing -> return Nothing
+      Just t -> case getHeaderContentAddr c of
+                  Nothing -> return Nothing
+                  Just (h, a) -> return $ Just Block { cache = c, 
+                                                       contentType = t,
+                                                       headerAddress = h,
+                                                       contentAddress = a }
 
+-- TODO: remove flip b b
 getURL :: Block -> Either String Addr
-getURL (Block b) =
-  flip runGet b $ do
+getURL b =
+  flip runGet (cache b) $ do
     skip (4*8)
     key_len <- getWord32le
     cache_key <- ((Addr . fromIntegral) `fmap` getWord32le)
@@ -79,8 +96,8 @@ getURL (Block b) =
                  getLazyByteString (fromIntegral key_len))
 
 
-getDataAddr :: Block -> [Addr]
-getDataAddr (Block b) =
+getDataAddr :: BL.ByteString -> [Addr]
+getDataAddr b =
   flip runGet b $ do
     skip(4*10)
     size <- replicateM 4 (fromIntegral `fmap` getWord32le)
@@ -88,7 +105,7 @@ getDataAddr (Block b) =
                           getWord32le)
     return $ map fst $ filter ((/= 0) . snd) $ zip addr size
 
-getHeaderContentAddr :: Block -> Maybe (Addr, Addr)
+getHeaderContentAddr :: BL.ByteString -> Maybe (Addr, Addr)
 getHeaderContentAddr b =
   case getDataAddr b of
     [] -> Nothing
@@ -116,7 +133,7 @@ getContentTypeFromContent (Data bl) =
       s -> return $ Just $ split ";" s !! 0
 
 
-getContentType :: Block -> IO (Maybe String)
+getContentType :: BL.ByteString -> IO (Maybe String)
 getContentType b =
   case getHeaderContentAddr b of
     Just (header_a, content_a) ->

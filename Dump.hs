@@ -2,7 +2,8 @@ module Dump
   (
     constructName,
     loadDumpMap,
-    dumpAddr
+    dumpAddr,
+    dumpPath
   ) where
 
 
@@ -33,12 +34,12 @@ getBaseDomain s =
               in sp !! (length sp - 2)
 
 
-constructName :: Block -> String -> (String, String)
-constructName b t =
-  let ext = case t of
+constructName :: Block -> (String, String)
+constructName b =
+  let ext = case contentType b of
               "audio/mpeg" -> "mp3"
               "video/x-flv" -> "flv"
-              _ -> fail "Unknown mime: " ++ t
+              _ -> fail "Unknown mime: " ++ (contentType b)
       domain = case getURL b of
                  Left s -> getBaseDomain s
                  Right a -> "unknown"
@@ -55,6 +56,7 @@ loadDumpMap s =
   where getFile = flip openBinaryFile ReadMode . (s </>)
                   >=> BL.hGetContents
 
+-- filterFromDumpMap :: Set Digest -> Block 
 
 nextAvailableName :: String -> String -> IO String
 nextAvailableName n s =
@@ -70,22 +72,19 @@ nextAvailableName n s =
                            else Nothing
   
 
-makeFilename :: Block -> String -> String -> IO String
-makeFilename b t s =
+makeFilename :: Block -> String -> IO String
+makeFilename b s =
   do
-    let (domain, ext) = constructName b t
+    let (domain, ext) = constructName b
     basename <- nextAvailableName domain s
     return $ s </> basename ++ "." ++ ext
     
 
-dumpAddr :: Block -> String -> IO ()
-dumpAddr b t =
+dumpAddr :: Block -> IO ()
+dumpAddr b =
   do
-    filename <- makeFilename b t dumpPath
-    case getHeaderContentAddr b of 
-      Nothing -> return ()
-      Just (h_a, c_a) -> do 
-        content <- loadAddr c_a
-        writeFile filename $ BL8.unpack content
+    filename <- makeFilename b dumpPath
+    content <- loadAddr $ contentAddress b
+    BL8.writeFile filename content
     
       
