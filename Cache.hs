@@ -84,7 +84,7 @@ createBlock a =
 
 -- TODO: remove flip b b
 getURL :: Block -> Either String Addr
-getURL b =
+getURL b = 
   flip runGet (cache b) $ do
     skip (4*8)
     key_len <- getWord32le
@@ -94,7 +94,6 @@ getURL b =
       else skip (4*14)
              >> ((Left . BL8.unpack) `fmap`
                  getLazyByteString (fromIntegral key_len))
-
 
 getDataAddr :: BL.ByteString -> [Addr]
 getDataAddr b =

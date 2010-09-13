@@ -2,8 +2,9 @@ module Dump
   (
     constructName,
     loadDumpMap,
-    dumpAddr,
-    dumpPath
+    dumpBlock,
+    dumpPath,
+    notOnDumpMap
   ) where
 
 
@@ -56,7 +57,13 @@ loadDumpMap s =
   where getFile = flip openBinaryFile ReadMode . (s </>)
                   >=> BL.hGetContents
 
--- filterFromDumpMap :: Set Digest -> Block 
+
+notOnDumpMap :: Set Digest -> Block -> IO Bool
+notOnDumpMap s b = 
+  do
+    c <- loadAddr $ contentAddress b
+    return $ Set.notMember (sha1 c) s
+  
 
 nextAvailableName :: String -> String -> IO String
 nextAvailableName n s =
@@ -80,8 +87,8 @@ makeFilename b s =
     return $ s </> basename ++ "." ++ ext
     
 
-dumpAddr :: Block -> IO ()
-dumpAddr b =
+dumpBlock :: Block -> IO ()
+dumpBlock b =
   do
     filename <- makeFilename b dumpPath
     content <- loadAddr $ contentAddress b

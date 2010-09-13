@@ -23,12 +23,14 @@ main = do
   let interesting = filter ((=~ interestingTypes) . contentType) 
                     $ catMaybes block
   
-  -- filter ones already dumped with loadDumpMap
   putStrLn "Loading dump map..."
   dumpmap <- loadDumpMap dumpPath
   
-  
-  putStrLn "Dumping..."    
+  putStrLn "Filtering dump map..."
+  final <- filterM (notOnDumpMap dumpmap) interesting
+
+  mapM dumpBlock final
+
            -- mapM loadAndDump interesting
   
   -- let extensions = mapM (\a -> case a of
