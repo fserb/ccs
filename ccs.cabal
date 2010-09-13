@@ -20,6 +20,7 @@ Executable ccs
     base == 4.*,  
     binary == 0.5.*,
     containers == 0.3.*,
+    directory == 1.0.*,
     SHA == 1.4.*,
     bytestring == 0.9.*, 
     filepath == 1.1.*,

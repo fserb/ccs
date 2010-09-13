@@ -1,16 +1,19 @@
 module Dump
   (
     constructName,
-    loadDumpMap
+    loadDumpMap,
+    dumpAddr
   ) where
 
 
 import Control.Monad
 import Data.String.Utils
+import Data.Maybe
 import Network.URL
 import System.IO
 import System.Directory
 import System.FilePath
+import System.FilePath.Posix
 import Data.Digest.Pure.SHA (sha1,Digest)
 import Data.Set (Set)
 import qualified Data.ByteString.Lazy as BL
@@ -51,3 +54,38 @@ loadDumpMap s =
     return $ Set.fromList h
   where getFile = flip openBinaryFile ReadMode . (s </>)
                   >=> BL.hGetContents
+
+
+nextAvailableName :: String -> String -> IO String
+nextAvailableName n s =
+  do
+    c <- getDirectoryContents s
+    f <- filterM (doesFileExist . (s </>)) c
+    let names = (map dropExtension f)
+    let numbers = mapMaybe filterNamesOut names
+    let next = 1 + foldl max 0 numbers
+    return $ n ++ "-" ++ show next
+  where filterNamesOut x = if startswith (n ++ "-") x
+                           then Just $ read $ drop (length n + 1) x 
+                           else Nothing
+  
+
+makeFilename :: Block -> String -> String -> IO String
+makeFilename b t s =
+  do
+    let (domain, ext) = constructName b t
+    basename <- nextAvailableName domain s
+    return $ s </> basename ++ "." ++ ext
+    
+
+dumpAddr :: Block -> String -> IO ()
+dumpAddr b t =
+  do
+    filename <- makeFilename b t dumpPath
+    case getHeaderContentAddr b of 
+      Nothing -> return ()
+      Just (h_a, c_a) -> do 
+        content <- loadAddr c_a
+        writeFile filename $ BL8.unpack content
+    
+      

@@ -4,6 +4,7 @@ module Cache
     loadIndexTable,
     indexFile,
     getContentType,
+    getHeaderContentAddr,
     getURL,
     loadAddr,
   ) where
