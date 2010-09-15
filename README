@@ -1,4 +1,12 @@
 -- Chrome Cache Sniffer
 
 
-Sniff chrome cache/media cache for mp3/video files and dump them with proper naming
+Sniff chrome cache/media cache for mp3/video files and dump them.
+
+- Get names from ID3 tags of mp3 files
+- domain based naming
+
+TODO
+- load media cache (for HTML5 videos too)
+- get youtube video names
+- allow timestamp based filtering (don't get old files again)
