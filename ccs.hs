@@ -30,7 +30,8 @@ main = do
   final <- filterM (notOnDumpMap dumpmap) interesting
 
   putStrLn ("Dumping " ++ show (length final) ++ " files...")
-  mapM dumpBlock final
+  -- mapM dumpBlock final
+  return final
 
            -- mapM loadAndDump interesting
   
