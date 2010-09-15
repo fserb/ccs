@@ -31,29 +31,23 @@ tempFilename = ".tempdump"
 audioTypes = [ "audio/mpeg",
                "audio/ogg" ]
 
-getBaseDomain :: String -> String
-getBaseDomain s =
-  case importURL s of
-    Nothing -> "unknown"
-    Just u -> let Absolute a = url_type u
-                  sp = split "." (host a)
-              in sp !! (length sp - 2)
+getBaseDomain :: Block -> String
+getBaseDomain b =
+  case getURL b of 
+    Right _ -> "unknown"
+    Left s -> case importURL s of
+                Nothing -> "unknown"
+                Just u -> let Absolute a = url_type u
+                              sp = split "." (host a)
+                          in sp !! (length sp - 2)
+                             
 
-makeBlockExtension :: Block -> String
-makeBlockExtension b = 
+makeFileExtension :: Block -> String
+makeFileExtension b = 
   case contentType b of
     "audio/mpeg" -> "mp3"
     "video/x-flv" -> "flv"
     _ -> fail "Unknown mime: " ++ (contentType b)
-
-
-constructNameParts :: Block -> (String, String)
-constructNameParts b =
-  let ext = makeBlockExtension b
-      domain = case getURL b of
-                 Left s -> getBaseDomain s
-                 Right a -> "unknown"
-  in (domain, ext)
 
 
 loadDumpMap :: String -> IO (Set Digest)
@@ -91,26 +85,32 @@ nextAvailableName n s =
 makeFilename :: Block -> String -> IO String
 makeFilename b s =
   do
-    let (domain, ext) = constructNameParts b
+    let domain = getBaseDomain b
+    let ext = makeFileExtension b
     basename <- nextAvailableName domain s
-    return $ s </> basename ++ "." ++ ext
+    return $ basename ++ "." ++ ext
     
     
 setAlbum :: Block -> String -> IO ()
-setAlbum b s = return ()        
-    
+setAlbum b s = 
+  do
+    let d = getBaseDomain b
+    tag <- TL.open s >>= maybe (return Nothing) TL.tag 
+    case tag of
+      Nothing -> return ()  
+      Just t -> TL.setAlbum t d
+      
     
 getFilename :: Block -> String -> IO (Maybe String)
 getFilename b s =
   do 
-    tagfile <- TL.open s
-    tag <- maybe (return Nothing) TL.tag tagfile
+    tag <- TL.open s >>= maybe (return Nothing) TL.tag 
     case tag of
       Nothing -> return Nothing
       Just t -> do
                artist <- TL.artist t
                title <- TL.title t
-               let (domain, ext) = constructNameParts b
+               let ext = makeFileExtension b
                return $ if (and [(length artist > 0),
                                  (length title > 0)])
                         then Just $ printf "%s - %s.%s" artist title ext  
@@ -121,13 +121,12 @@ dumpBlock :: Block -> IO ()
 dumpBlock b =
   do
     content <- loadAddr $ contentAddress b
-    let temp = tempFilename ++ "." ++ makeBlockExtension b
+    let temp = tempFilename ++ "." ++ makeFileExtension b
     BL8.writeFile temp content
     g <- getFilename b temp
-    setAlbum b temp
     filename <- case g of
                   Nothing -> makeFilename b dumpPath
-                  Just n  -> return n
-    renameFile temp filename
+                  Just n  -> setAlbum b temp >> return n
+    renameFile temp $ dumpPath </> filename
     
       

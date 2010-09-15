@@ -30,11 +30,5 @@ main = do
   final <- filterM (notOnDumpMap dumpmap) interesting
 
   putStrLn ("Dumping " ++ show (length final) ++ " files...")
-  -- mapM dumpBlock final
-  return final
+  mapM dumpBlock final
 
-           -- mapM loadAndDump interesting
-  
-  -- let extensions = mapM (\a -> case a of
-  --                               (a, b) -> ((flip constructName b) . Block)
-  --                                         `fmap` loadAddr a) interesting
