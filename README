@@ -8,5 +8,6 @@ Sniff chrome cache/media cache for mp3/video files and dump them.
 
 TODO
 - load media cache (for HTML5 videos too)
-- get youtube video names
+- get youtube video names (impossible?)
+- since we chance MP3 albuns, we have duplicate entries on sha1 dump
 

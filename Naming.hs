@@ -61,11 +61,14 @@ makeFilename b s =
 setAlbum :: Block -> String -> IO ()
 setAlbum b s =
   do
-    let d = getBaseDomain b
-    tag <- TL.open s >>= maybe (return Nothing) TL.tag
+    tagfile <- TL.open s
+    tag <- maybe (return Nothing) TL.tag tagfile
     case tag of
       Nothing -> return ()
-      Just t -> TL.setAlbum t d
+      Just t -> do
+               TL.setAlbum t "CCS" 
+               maybe (return 0) TL.save tagfile 
+               return ()
 
 
 getFilename :: Block -> String -> IO (Maybe String)
