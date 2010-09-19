@@ -63,11 +63,11 @@ getIndexTable =
 
 
 newtype Data  = Data BL.ByteString
-data Block = Block { cache :: BL.ByteString, 
+data Block = Block { cache :: BL.ByteString,
                      contentType :: String,
-                     headerAddress :: Addr, 
+                     headerAddress :: Addr,
                      contentAddress :: Addr } deriving (Show)
-             
+
 createBlock :: Addr -> IO (Maybe Block)
 createBlock a =
   do
@@ -77,14 +77,14 @@ createBlock a =
       Nothing -> return Nothing
       Just t -> case getHeaderContentAddr c of
                   Nothing -> return Nothing
-                  Just (h, a) -> return $ Just Block { cache = c, 
+                  Just (h, a) -> return $ Just Block { cache = c,
                                                        contentType = t,
                                                        headerAddress = h,
                                                        contentAddress = a }
 
 -- TODO: remove flip b b
 getURL :: Block -> Either String Addr
-getURL b = 
+getURL b =
   flip runGet (cache b) $ do
     skip (4*8)
     key_len <- getWord32le

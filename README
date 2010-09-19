@@ -9,4 +9,4 @@ Sniff chrome cache/media cache for mp3/video files and dump them.
 TODO
 - load media cache (for HTML5 videos too)
 - get youtube video names
-- allow timestamp based filtering (don't get old files again)
+
