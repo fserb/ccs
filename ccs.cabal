@@ -32,7 +32,7 @@ Executable ccs
     url == 2.1.*
 
   Other-modules: 
-    Cache, Dump
+    Cache, Dump, Naming
 
   -- Build-tools:         
   
