@@ -32,7 +32,8 @@ makeFileExtension b =
   case contentType b of
     "audio/mpeg" -> "mp3"
     "video/x-flv" -> "flv"
-    _ -> fail "Unknown mime: " ++ (contentType b)
+    "video/mp4" -> "mp4"
+    _ -> error ("Unknown mime: " ++ (contentType b))
 
 
 nextAvailableName :: String -> String -> IO String
@@ -66,8 +67,8 @@ setAlbum b s =
     case tag of
       Nothing -> return ()
       Just t -> do
-               TL.setAlbum t "CCS" 
-               maybe (return 0) TL.save tagfile 
+               TL.setAlbum t "CCS"
+               maybe (return 0) TL.save tagfile
                return ()
 
 
