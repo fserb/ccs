@@ -89,9 +89,10 @@ makeDumpMap b s =
 loadDumpMap :: String -> IO (Set Digest)
 loadDumpMap s =
   do
-    d <- loadDumpMapFromDir s
     f <- loadDumpMapFromFile $ s </> dumpSHA1Map
-    return $ Set.union d f
+    if f == Set.empty
+     then loadDumpMapFromDir s
+     else return f
 
 
 notOnDumpMap :: Set Digest -> Block -> IO Bool
