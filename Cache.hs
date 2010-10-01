@@ -5,6 +5,9 @@ module Cache
     loadIndexTable,
     indexFile,
     getURL,
+    getContentTypeFromHeader,
+    getContentTypeFromContent,
+    Data(..),
     loadAddr,
   ) where
 
@@ -31,6 +34,13 @@ indexFile = cachePath ++ "/index"
 newtype Addr = Addr Int deriving (Show, Eq)
 type Filename = String
 type FileOffset = (Int, Int, Int) -- file, offset start, size
+
+newtype Data  = Data BL.ByteString
+data Block = Block { cache :: BL.ByteString,
+                     contentType :: String,
+                     headerAddress :: Addr,
+                     contentAddress :: Addr } deriving (Show)
+
 
 -- Based on chrome/trunk/src/net/disk_cache/addr.h
 getAddr :: Addr -> Either Filename FileOffset
@@ -62,22 +72,15 @@ getIndexTable =
     return $ filter (/= Addr 0) all
 
 
-newtype Data  = Data BL.ByteString
-data Block = Block { cache :: BL.ByteString,
-                     contentType :: String,
-                     headerAddress :: Addr,
-                     contentAddress :: Addr } deriving (Show)
-
 createBlock :: Addr -> IO (Maybe Block)
 createBlock a =
   do
     c <- loadAddr a
-    t <- getContentType c
-    case t of
+    case getHeaderContentAddr c of
       Nothing -> return Nothing
-      Just t -> case getHeaderContentAddr c of
-                  Nothing -> return Nothing
-                  Just (h, a) -> return $ Just Block { cache = c,
+      Just (h, a) -> getContentType h a >>= \t -> case t of
+                       Nothing -> return Nothing
+                       Just t -> return $ Just Block { cache = c,
                                                        contentType = t,
                                                        headerAddress = h,
                                                        contentAddress = a }
@@ -115,11 +118,15 @@ getHeaderContentAddr b =
 
 getContentTypeFromHeader :: Data -> Maybe String
 getContentTypeFromHeader (Data bl) =
-  let s = replace "\NUL" "\n" $ BL8.unpack bl
-      ct = s =~ "^Content-Type: ([^; \n]*)" :: [[String]]
+  let s = replace "\NUL" "\n" bl
+      ct = s =~ "^Content-Type: ([^; \n]*)" :: [[BL8.ByteString]]
   in case ct of
-       [_,s]:xs -> Just s
+       [_,s]:xs -> Just $ BL8.unpack s
        [] -> Nothing
+  where replace a b = BL8.map (\x -> case x of
+                                       '\NUL' -> '\n'
+                                       c -> c)
+
 
 getContentTypeFromContent :: Data -> IO (Maybe String)
 getContentTypeFromContent (Data bl) =
@@ -132,18 +139,15 @@ getContentTypeFromContent (Data bl) =
       s -> return $ Just $ split ";" s !! 0
 
 
-getContentType :: BL.ByteString -> IO (Maybe String)
-getContentType b =
-  case getHeaderContentAddr b of
-    Just (header_a, content_a) ->
-      do header <- Data `fmap` loadAddr header_a
-         case getContentTypeFromHeader header of
-           Nothing -> loadContentAndGetType
-           Just "application/octet-stream" -> loadContentAndGetType
-           c -> return c
-         where loadContentAndGetType = Data `fmap`
-                 loadAddr content_a >>= getContentTypeFromContent
-    Nothing -> return Nothing
+getContentType :: Addr -> Addr -> IO (Maybe String)
+getContentType header_a content_a =
+  do header <- Data `fmap` loadAddr header_a
+     case getContentTypeFromHeader header of
+       Nothing -> loadContentAndGetType
+       Just "application/octet-stream" -> loadContentAndGetType
+       c -> return c
+       where loadContentAndGetType = Data `fmap` loadAddr content_a >>=
+                                     getContentTypeFromContent
 
 
 loadAddr :: Addr -> IO BL.ByteString

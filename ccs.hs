@@ -35,3 +35,5 @@ main = do
   putStrLn "Dumping sha1 map..."
   dumpmap <- makeDumpMap final dumpmap
   dumpMap dumpmap
+
+  putStrLn "Done."
